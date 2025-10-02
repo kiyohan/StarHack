@@ -6,7 +6,6 @@ import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { IoArrowBack } from 'react-icons/io5';
 
-// Helper function to check task completion
 const isTaskCompletedToday = (user, taskType) => {
     if (!user?.dailyTasks?.[taskType]) return false;
     const lastCompletionDate = new Date(user.dailyTasks[taskType]);
@@ -20,18 +19,27 @@ const JournalPage = () => {
   const [entries, setEntries] = useState([]);
   const [newContent, setNewContent] = useState('');
   const [loading, setLoading] = useState(true);
-  const { user, updateUserState } = useAuth(); // Get the full user object
+  const { user, updateUserState } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isJournalDone, setIsJournalDone] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+        setIsJournalDone(isTaskCompletedToday(user, 'Journal'));
+    }
+  }, [user]);
 
   useEffect(() => {
     fetchEntries();
   }, []);
 
   const fetchEntries = async () => {
+    setLoading(true);
     try {
       const res = await api.get('/journal');
       setEntries(res.data);
     } catch (err) {
-      console.error('Failed to fetch journal entries', err);
+      toast.error("Could not load past entries.");
     } finally {
       setLoading(false);
     }
@@ -39,34 +47,39 @@ const JournalPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    // --- THIS IS THE FIX ---
-    // Check if the journal task is already done for today BEFORE sending any API requests.
-    if (isTaskCompletedToday(user, 'Journal')) {
+    if (isJournalDone) {
       toast.error("You've already completed your journal task for today!");
-      return; // Stop the function here
+      return;
     }
-    // --- END OF FIX ---
-
     if (newContent.trim() === '') return;
 
+    setIsSubmitting(true);
     try {
-      await api.post('/journal', { content: newContent });
-      const taskRes = await api.post('/tasks/complete', { taskType: 'Journal' });
+      // --- THE FIX: Make only ONE atomic API call ---
+      const res = await api.post('/journal', { content: newContent });
       
-      updateUserState(taskRes.data);
-      toast.success('Journal entry saved and task completed!');
+      const { updatedUser, newEntry } = res.data;
 
+      // Update global state with the fresh user object from the API response
+      updateUserState(updatedUser);
+      
+      // Manually add the new entry to the local list for instant UI update
+      setEntries(prevEntries => [newEntry, ...prevEntries]);
+      
+      // Manually set the local "done" state to lock the form
+      setIsJournalDone(true);
+      
+      toast.success('Journal entry saved and task completed!');
       setNewContent('');
-      fetchEntries();
+
     } catch (err) {
-      console.error('Failed to save journal entry', err);
-      toast.error(err.response?.data?.msg || 'Failed to save entry.');
+      console.error('Failed to save journal entry:', err);
+      toast.error(err.response?.data?.msg || 'An error occurred while saving.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
   
-  const isJournalDone = isTaskCompletedToday(user, 'Journal');
-
   if (loading) return <div>Loading your journal...</div>;
 
   return (
@@ -86,25 +99,23 @@ const JournalPage = () => {
                     fontSize: '18px', lineHeight: '1.8', color: '#004D40', resize: 'none',
                     marginTop: '20px', marginBottom: '20px'
                 }}
-                disabled={isJournalDone} // Disable textarea if task is done
+                disabled={isJournalDone || isSubmitting}
             />
             <button
                 type="submit"
-                disabled={isJournalDone} // Disable button if task is done
+                disabled={isJournalDone || isSubmitting}
                 style={{
                     padding: '15px', borderRadius: '25px', border: 'none',
                     backgroundColor: '#263238', color: 'white', fontSize: '16px', fontWeight: 'bold',
-                    cursor: 'pointer',
+                    cursor: 'pointer', opacity: (isJournalDone || isSubmitting) ? 0.6 : 1
                 }}>
-                {isJournalDone ? 'Task Completed ✅' : 'Post & Complete Task'}
+                {isSubmitting ? 'Posting...' : (isJournalDone ? 'Task Completed ✅' : 'Post & Complete Task')}
             </button>
         </form>
 
         <div style={{ marginTop: '40px' }}>
             <h2>Past Entries</h2>
-            {entries.length === 0 ? (
-                <p>You have no journal entries yet.</p>
-            ) : (
+            {entries.length === 0 ? (<p>You have no journal entries yet.</p>) : (
                 entries.map(entry => (
                     <div key={entry._id} style={{ border: '1px solid #B2DFDB', padding: '15px', marginBottom: '15px', borderRadius: '8px' }}>
                         <p style={{ fontSize: '12px', color: '#00796B' }}>{new Date(entry.createdAt).toLocaleString()}</p>
