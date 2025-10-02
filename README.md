@@ -6,7 +6,7 @@
 
 ## Table of Contents
 
-- [Deployed at](#deployement)
+- [Deployed at](#deployment)
 - [Live Demo](#live-demo)
 - [Features](#features)
 - [Psychological Principles](#psychological-principles)
