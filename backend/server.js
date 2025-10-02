@@ -27,4 +27,14 @@ app.use('/api/activities', require('./routes/activities'));
 
 // --------------------------------
 
+
+// Whitelist the URLs that are allowed to make requests to this API
+const corsOptions = {
+    origin: [
+        'http://localhost:5173', // Your local frontend for testing
+        'https://star-hack.vercel.app/' 
+    ]
+};
+app.use(cors(corsOptions));
+
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
